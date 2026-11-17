@@ -166,7 +166,7 @@ const SPINDLE = {
    ===================================================================== */
 
 const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const SPEED = REDUCED ? 0.35 : 1;   // global time multiplier (raise to slow everything down)
+const SPEED = REDUCED ? 0.35 : 0.7;   // global time multiplier (raise to slow everything down)
 
 // ---------- helpers ----------
 const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
