@@ -46,8 +46,9 @@
   .hit:focus { outline:none; }
 
   /* circles on the dark start screen: light outline */
-  .node .outline { fill:none; stroke:var(--paper); stroke-width:1.5; transition:stroke-width .25s, stroke .5s; }
-  .node:hover .outline, .node:focus-visible .outline { stroke-width:6; }
+  .node .outline { fill:none; stroke:none; stroke-width:1.5; transition:stroke-width .25s, stroke .5s; }
+  .node .paper-fill { transform-box:fill-box; transform-origin:center; transition:transform .25s; }
+  .node:hover .paper-fill, .node:focus-visible .paper-fill { transform:scale(1.06); }
   /* the active circle once the light has spread out of it */
   .node.lit .outline { stroke:var(--ink); }
   .paper-fill { fill:var(--paper); }
@@ -238,7 +239,7 @@ const flood = document.getElementById("flood");
 const defs = mk("defs", {}, stage);
 
 const ringsG = mk("g", {}, stage);
-const CIRCLE_GAP = 3;     // dark gap between a start circle's light disc and its outline (0 = no gap)
+const CIRCLE_GAP = 0;     // dark gap between a start circle's light disc and its outline (0 = no gap)
 const RIPPLE_RINGS = 1;   // number of ripple circles
 const rings = Array.from({ length: RIPPLE_RINGS }, () => mk("circle", { class: "ring" }, ringsG));
 const connector = mk("line", { class: "connector" }, stage);
