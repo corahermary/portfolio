@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cora Hermary</title>
+<style>
+  :root { --ink:#000; --paper:#fff; --font:"Courier New", Courier, monospace; }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html, body { height:100%; background:var(--paper); color:var(--ink); overflow:hidden; font-family:var(--font); }
+
+  /* The drawing layer: circles, ripples, spindles, lines */
+  #stage { position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; display:block; }
+  .hit { pointer-events:all; cursor:pointer; }
+  .hit:focus { outline:none; }
+
+  .node .outline { fill:var(--paper); stroke:var(--ink); stroke-width:2; transition:stroke-width .25s; }
+  .node:hover .outline, .node:focus-visible .outline { stroke-width:3.5; }
+  .label { font-family:var(--font); text-anchor:middle; dominant-baseline:central; user-select:none; }
+
+  .ring { fill:none; stroke:var(--ink); stroke-width:1.5; }
+  .connector { stroke:var(--ink); stroke-width:1.5; }
+
+  .spindle line { stroke:var(--ink); stroke-width:1.5; }
+  .spindle .ball { fill:var(--paper); stroke:var(--ink); stroke-width:1.5; transition:fill .2s; }
+  .spindle:hover .ball, .spindle:focus-visible .ball, .spindle.selected .ball { fill:var(--ink); }
+  .spindle text { font-family:var(--font); text-anchor:middle; user-select:none; }
+  .measure { font-family:var(--font); visibility:hidden; }
+
+  /* The content panel (shared by About and Work) */
+  #panel { position:fixed; z-index:1; background:var(--paper); overflow-y:auto; visibility:hidden;
+           overscroll-behavior:contain; scrollbar-width:none; }
+  #panel::-webkit-scrollbar { display:none; }
+  .panel-inner { padding:clamp(32px,6vw,84px) clamp(24px,5vw,72px); max-width:680px; }
+  .panel-inner h2 { font-weight:400; font-size:clamp(22px,2.4vw,32px); line-height:1.1; margin-bottom:.25em; }
+  .panel-inner h2.caps { letter-spacing:.15em; text-transform:uppercase; margin-bottom:1.2em; }
+  .panel-inner .meta { font-size:14px; margin-bottom:2em; }
+  .panel-inner p { font-size:clamp(14px,1.05vw,16px); line-height:1.65; margin-bottom:1em; }
+  .panel-inner a { color:inherit; }
+  .panel-inner figure { margin:2.2em 0; }
+  .panel-inner img { width:100%; display:block; }
+  .panel-inner figcaption { font-size:13px; margin-top:.6em; }
+  .placeholder { aspect-ratio:4/3; border:1px solid var(--ink); display:flex; align-items:center; justify-content:center; font-size:13px; }
+</style>
+</head>
+<body>
+
+<svg id="stage" aria-label="Portfolio navigation"></svg>
+<div id="panel" aria-live="polite"></div>
+
+<script>
+/* =====================================================================
+   CONTENT — edit everything in this block.
+   For images: put the files next to index.html (e.g. in an /images
+   folder) and set src: "images/the-blue-1.jpg". Empty src = placeholder.
+   ===================================================================== */
+
+const ABOUT_HTML = `
+  <h2 class="caps">About</h2>
+  <p>Cora Hermary is a multidisciplinary artist based in Vancouver, currently studying Visual Arts at Emily Carr University of Art + Design. She holds a BA in Cognitive Systems (Philosophy) from the University of British Columbia.</p>
+  <p>[A paragraph about your practice.]</p>
+  <figure><div class="placeholder">image</div></figure>
+  <p>Contact — <a href="mailto:you@example.com">you@example.com</a></p>
+`;
+
+const WORKS = [
+  { title: "Elixir for a New World", year: "2026", dimensions: "",
+   media: ["ink on paper", "essential oils (narcissus, sage, & Eastern hemlock)", "apricot kernel oil", "gold leaf", "found glass bottle", "cotton sheet over a trash can"],
+    images: [ { src: "", caption: "" } ] },
+  { title: "Mask", year: "2026", dimensions: "",
+   media: ["dryer lint", "lipstick", "eyeliner", "toilet paper pulp", "velvet", "ribbon", "pins", "glass beads"],
+    images: [ { src: "", caption: "" } ] },
+  { title: "Binoculars", year: "2026", dimensions: "",
+    media: ["pop can", "velvet", "glass beads"],
+    images: [ { src: "", caption: "" } ] },
+  { title: "Abracadabra", year: "2026", dimensions: "",
+    media: ["clay", "gesso", "cotton thread"],
+    images: [ { src: "", caption: "" } ] },
+];
+
+/* Spindle settings (in pixels). Add or remove entries in WORKS above and
+   the spindles re-space themselves evenly — nothing else to change.
+   Each branch is as long as its title needs, but never shorter than
+   minLength or longer than maxLength; titles that don't fit get "…". */
+const SPINDLE = {
+  minLength: 80,     // shortest branch
+  maxLength: 260,    // longest branch (also capped by the screen size)
+  fontSize: 13,      // title size on computers
+  fontSizePhone: 11, // title size on phones
+  padding: 30,       // extra branch length beyond the title text
+};
+
+/* =====================================================================
+   Everything below is the machinery.
+   ===================================================================== */
+
+const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+const SPEED = REDUCED ? 0.35 : 1;   // global time multiplier (raise to slow everything down)
+
+// ---------- helpers ----------
+const clamp = (v, a = 0, b = 1) => Math.min(b, Math.max(a, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const smooth = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * (3 - 2 * t); };
+const ease = {
+  inOut: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+  out:   t => 1 - Math.pow(1 - t, 3),
+  in:    t => t * t * t,
+  outSine: t => Math.sin(t * Math.PI / 2),
+  inSine:  t => 1 - Math.cos(t * Math.PI / 2),
+  outBack: t => { const c = 1.9; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); },
+  linear: t => t,
+};
+const wait = ms => new Promise(r => setTimeout(r, ms * SPEED));
+function tween(ms, fn, e = ease.inOut) {
+  ms *= SPEED;
+  return new Promise(res => {
+    const start = performance.now();
+    const step = now => {
+      const t = clamp((now - start) / ms);
+      fn(e(t)); render();
+      t < 1 ? requestAnimationFrame(step) : res();
+    };
+    requestAnimationFrame(step);
+  });
+}
+const normAngle = a => { while (a > Math.PI) a -= 2 * Math.PI; while (a <= -Math.PI) a += 2 * Math.PI; return a; };
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------- layout (recomputed every frame, so resizing just works) ----------
+function layout() {
+  const W = innerWidth, H = innerHeight;
+  // Phone layout only on touch devices with small screens (or very small windows).
+  const touch = matchMedia("(hover: none) and (pointer: coarse)").matches;
+  const narrow = (touch && Math.min(W, H) < 820) || W < 480;
+  if (!narrow) {
+    const R = clamp(Math.min(W, H) * 0.1, 44, 100);
+    // room for a branch: ball at 9 o'clock must stay right of the middle, and top/bottom branches on screen
+    const spMax = Math.max(30, Math.min(W * 0.25 - 44, H * 0.5 - 28) - R - 7);
+    return { W, H, R, spMax, narrow,
+      home: { about: [W * .34, H / 2], work: [W * .66, H / 2] },
+      side: { about: [W * .25, H / 2], work: [W * .75, H / 2] },
+      dir:  { about: [1, 0], work: [-1, 0] },
+      ballAngle: Math.PI,                               // 9 o'clock
+      rect: { about: [W / 2, 0, W / 2, H], work: [0, 0, W / 2, H] },
+      fontSize: SPINDLE.fontSize };
+  }
+  // Phones / portrait: circles stack, panel opens in the lower part of the screen.
+  const R = clamp(Math.min(W, H) * 0.14, 40, 72);
+  const T = H * 0.44;
+  const spMax = Math.max(30, Math.min(H * 0.22 - 14, W * 0.5 - 14) - R - 7);
+  return { W, H, R, spMax, narrow, T,
+    home: { about: [W / 2, H * .36], work: [W / 2, H * .64] },
+    side: { about: [W / 2, H * .2], work: [W / 2, H * .22] },
+    dir:  { about: [0, 1], work: [0, 1] },
+    ballAngle: Math.PI / 2,                             // 6 o'clock (pointing at the panel)
+    rect: { about: [0, T, W, H - T], work: [0, T, W, H - T] },
+      fontSize: SPINDLE.fontSizePhone };
+}
+
+// ---------- state ----------
+const S = {
+  active: null,                  // 'about' | 'work' | null
+  glide: 0,                      // active circle moving from home to side position
+  fill: { about: 0, work: 0 },   // black fill radius (0..1)
+  gone: { about: 0, work: 0 },   // dissolve amount of the other circle
+  ripple: null,                  // { key, P, dir }
+  spin: 0,                       // spindle growth
+  rot: 0,                        // spindle rotation (radians)
+  sel: null,                     // selected work index
+  panelKind: null,               // 'about' | 'work' | null
+  line: 0, edge: 0, panel: 0, content: 0,
+  busy: false,
+};
+
+// ---------- build SVG ----------
+const NS = "http://www.w3.org/2000/svg";
+const mk = (tag, attrs = {}, parent) => {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+};
+const stage = document.getElementById("stage");
+const panel = document.getElementById("panel");
+const defs = mk("defs", {}, stage);
+const ringsG = mk("g", {}, stage);
+const rings = Array.from({ length: 4 }, () => mk("circle", { class: "ring" }, ringsG));
+const connector = mk("line", { class: "connector" }, stage);
+const edgeLine = mk("line", { class: "connector" }, stage);
+const spindleG = mk("g", {}, stage);
+
+const nodes = {};
+for (const key of ["about", "work"]) {
+  const g = mk("g", { class: "node hit", tabindex: 0, role: "button" }, stage);
+  const outline = mk("path", { class: "outline" }, g);
+  const fill = mk("circle", { fill: "#000" }, g);
+  const t1 = mk("text", { class: "label", fill: "#000" }, g);
+  const t2 = mk("text", { class: "label", fill: "#fff" }, g);
+  t1.textContent = t2.textContent = key.toUpperCase();
+  const seed = [Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28];
+  nodes[key] = { g, outline, fill, t1, t2, seed };
+  g.addEventListener("click", () => onNode(key));
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNode(key); } });
+}
+
+const N = WORKS.length;
+const baseAngle = i => -Math.PI / 2 + i * 2 * Math.PI / N;   // first work at 12 o'clock, clockwise
+const measurer = mk("text", { class: "measure" }, stage);
+const advanceCache = {};
+function charWidth(fs) {              // monospace: every character is the same width
+  if (!advanceCache[fs]) {
+    measurer.setAttribute("font-size", fs);
+    measurer.textContent = "M".repeat(20);
+    advanceCache[fs] = measurer.getComputedTextLength() / 20 || fs * 0.6;
+  }
+  return advanceCache[fs];
+}
+function fitTitle(title, maxW, cw) {
+  if (title.length * cw <= maxW) return title;
+  const maxChars = Math.floor(maxW / cw) - 1;           // leave room for "…"
+  if (maxChars < 1) return "…";
+  let out = "";
+  for (const w of title.split(" ")) {
+    const next = out ? out + " " + w : w;
+    if (next.length > maxChars) break;
+    out = next;
+  }
+  if (!out) out = title.slice(0, maxChars);            // first word alone is too long: cut by character
+  return out.replace(/[\s,.;:–—-]+$/, "") + "…";
+}
+function spindleGeom(Lo) {
+  const cw = charWidth(Lo.fontSize);
+  const maxLen = Math.max(10, Math.min(SPINDLE.maxLength, Lo.spMax));
+  return WORKS.map(w => {
+    const want = w.title.length * cw + SPINDLE.padding;
+    const branch = clamp(want, Math.min(SPINDLE.minLength, maxLen), maxLen);
+    return { branch, text: fitTitle(w.title, branch - SPINDLE.padding * 0.6, cw) };
+  });
+}
+const spindles = WORKS.map((w, i) => {
+  const g = mk("g", { class: "spindle hit", tabindex: 0, role: "button", "aria-label": w.title }, spindleG);
+  const line = mk("line", {}, g);
+  const text = mk("text", {}, g);
+  text.textContent = w.title;
+  const hitC = mk("circle", { fill: "transparent" }, g);
+  const ball = mk("circle", { class: "ball" }, g);
+  g.addEventListener("click", () => onSpindle(i));
+  g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSpindle(i); } });
+  return { g, line, text, hitC, ball };
+});
+
+// wobbly crumbling outline (gone = 0 is a perfect circle)
+function blob(cx, cy, r, gone, s) {
+  const n = 90; let d = "";
+  for (let i = 0; i <= n; i++) {
+    const a = i / n * Math.PI * 2;
+    const noise = gone > 0
+      ? .5 * Math.sin(3 * a + s[0] + gone * 2) + .3 * Math.sin(5 * a + s[1]) + .2 * Math.sin(11 * a + s[2] - gone * 3)
+      : 0;
+    const rr = r * (1 - .75 * gone) * (1 + .32 * gone * noise);
+    d += (i ? "L" : "M") + (cx + rr * Math.cos(a)).toFixed(2) + " " + (cy + rr * Math.sin(a)).toFixed(2);
+  }
+  return d + "Z";
+}
+
+// ---------- render: draws everything from state ----------
+function nodePos(Lo, key) {
+  const t = key === S.active ? S.glide : 0;
+  return [lerp(Lo.home[key][0], Lo.side[key][0], t), lerp(Lo.home[key][1], Lo.side[key][1], t)];
+}
+
+function render() {
+  const Lo = layout();
+  const { W, H, R } = Lo;
+  const pos = { about: nodePos(Lo, "about"), work: nodePos(Lo, "work") };
+
+  // ripple (also drives the dissolve / re-forming of the other circle)
+  const gap = 0.14;
+  if (S.ripple) {
+    const { key, P, dir } = S.ripple;
+    const [ox, oy] = pos[key];
+    const maxD = Math.max(...[[0, 0], [W, 0], [0, H], [W, H]].map(([x, y]) => Math.hypot(x - ox, y - oy))) + 20;
+    const ringR = k => {
+      const q = clamp(P * (1 + (rings.length - 1) * gap) - k * gap);
+      return { q, r: dir > 0 ? R + q * (maxD - R) : maxD - q * (maxD - R) };
+    };
+    rings.forEach((c, k) => {
+      const { q, r } = ringR(k);
+      const vis = q > 0 && q < 1;
+      c.setAttribute("cx", ox); c.setAttribute("cy", oy); c.setAttribute("r", Math.max(0, r));
+      c.style.opacity = vis ? (dir > 0 ? Math.pow(1 - q, .7) : Math.pow(q, .7)) : 0;
+    });
+    const other = key === "about" ? "work" : "about";
+    const d = Math.hypot(pos[other][0] - ox, pos[other][1] - oy);
+    S.gone[other] = clamp((ringR(0).r - (d - 1.2 * R)) / (2.4 * R));
+  } else {
+    rings.forEach(c => c.style.opacity = 0);
+  }
+
+  // circles
+  for (const key of ["about", "work"]) {
+    const n = nodes[key], [x, y] = pos[key], gone = S.gone[key];
+    n.g.style.display = gone >= 1 ? "none" : "";
+    n.g.style.opacity = 1 - smooth(.55, 1, gone);
+    n.outline.setAttribute("d", blob(x, y, R, gone, n.seed));
+    const fr = R * S.fill[key];
+    n.fill.setAttribute("cx", x); n.fill.setAttribute("cy", y); n.fill.setAttribute("r", fr);
+    const fs = R * 0.22;
+    const textW = 1.8 * fs / R;                         // how far out the word reaches, as a fraction of R
+    const white = smooth(textW * 0.5, textW, S.fill[key]);
+    for (const t of [n.t1, n.t2]) {
+      t.setAttribute("x", x); t.setAttribute("y", y);
+      t.setAttribute("font-size", fs);
+    }
+    const fade = 1 - clamp(gone * 2.5);
+    n.t1.style.opacity = fade * (1 - white);
+    n.t2.style.opacity = fade * white;
+    n.g.setAttribute("aria-label", S.active === key ? "Back" : key);
+  }
+
+  // spindles
+  const c = pos.work;
+  const st = Math.min(0.08, 0.5 / N);
+  const geom = spindleGeom(Lo);
+  spindles.forEach((sp, i) => {
+    const g = clamp(S.spin * (1 + (N - 1) * st) - i * st);
+    sp.g.style.display = g <= 0 ? "none" : "";
+    sp.g.classList.toggle("selected", i === S.sel);
+    if (g <= 0) return;
+    const th = baseAngle(i) + S.rot, ux = Math.cos(th), uy = Math.sin(th);
+    const ge = ease.out(g);
+    const { branch, text } = geom[i];
+    if (sp.text.textContent !== text) sp.text.textContent = text;
+    const len = R + branch * ge;
+    sp.line.setAttribute("x1", c[0] + R * ux); sp.line.setAttribute("y1", c[1] + R * uy);
+    sp.line.setAttribute("x2", c[0] + len * ux); sp.line.setAttribute("y2", c[1] + len * uy);
+    const br = 7 * Math.max(0, ease.outBack(clamp((g - .8) / .2)));
+    for (const b of [sp.ball, sp.hitC]) { b.setAttribute("cx", c[0] + len * ux); b.setAttribute("cy", c[1] + len * uy); }
+    sp.ball.setAttribute("r", br);
+    sp.hitC.setAttribute("r", g >= 1 ? 18 : 0);
+    const mid = R + branch / 2;
+    let deg = th * 180 / Math.PI;
+    if (ux < -1e-6) deg += 180;                      // keep text upright on the left side
+    sp.text.setAttribute("transform", `translate(${c[0] + mid * ux},${c[1] + mid * uy}) rotate(${deg})`);
+    sp.text.setAttribute("x", 0); sp.text.setAttribute("y", -8);
+    sp.text.setAttribute("font-size", Lo.fontSize);
+    sp.text.style.opacity = clamp((g - .55) / .45);
+  });
+
+  // connector line + panel edge + panel
+  const kind = S.panelKind;
+  if (kind) {
+    const [dx, dy] = Lo.dir[kind];
+    let sx, sy;
+    if (kind === "about") { sx = pos.about[0] + R * dx; sy = pos.about[1] + R * dy; }
+    else {
+      const th = baseAngle(S.sel) + S.rot;
+      const reach = R + geom[S.sel].branch + 7;
+      sx = c[0] + reach * Math.cos(th); sy = c[1] + reach * Math.sin(th);
+    }
+    const ex = Lo.narrow ? sx : W / 2, ey = Lo.narrow ? Lo.T : sy;
+    connector.setAttribute("x1", sx); connector.setAttribute("y1", sy);
+    connector.setAttribute("x2", lerp(sx, ex, S.line)); connector.setAttribute("y2", lerp(sy, ey, S.line));
+    connector.style.opacity = S.line > 0 ? 1 : 0;
+
+    if (Lo.narrow) {
+      edgeLine.setAttribute("x1", ex - S.edge * ex); edgeLine.setAttribute("x2", ex + S.edge * (W - ex));
+      edgeLine.setAttribute("y1", ey); edgeLine.setAttribute("y2", ey);
+    } else {
+      edgeLine.setAttribute("x1", ex); edgeLine.setAttribute("x2", ex);
+      edgeLine.setAttribute("y1", ey - S.edge * ey); edgeLine.setAttribute("y2", ey + S.edge * (H - ey));
+    }
+    edgeLine.style.opacity = S.edge > 0 ? 1 : 0;
+
+    const [px, py, pw, ph] = Lo.rect[kind];
+    Object.assign(panel.style, { left: px + "px", top: py + "px", width: pw + "px", height: ph + "px" });
+    const hidden = (1 - S.panel) * 100;
+    panel.style.clipPath = Lo.narrow ? `inset(0 0 ${hidden}% 0)`
+      : kind === "about" ? `inset(0 ${hidden}% 0 0)` : `inset(0 0 0 ${hidden}%)`;
+    panel.style.visibility = S.panel > 0 ? "visible" : "hidden";
+    const inner = panel.firstElementChild;
+    if (inner) { inner.style.opacity = S.content; inner.style.transform = `translateY(${(1 - S.content) * 10}px)`; }
+  } else {
+    connector.style.opacity = 0; edgeLine.style.opacity = 0;
+    panel.style.visibility = "hidden";
+  }
+}
+
+// ---------- panel content ----------
+const figureHTML = im => `<figure>${im.src ? `<img src="${esc(im.src)}" alt="${esc(im.caption || "")}">` : `<div class="placeholder">image</div>`}${im.caption ? `<figcaption>${im.caption}</figcaption>` : ""}</figure>`;
+const workHTML = w => `<div class="panel-inner">
+  <h2>${w.title}</h2>
+  <p class="meta">${[w.year, w.dimensions].filter(Boolean).join(" · ")}</p>
+  ${(w.media || []).map(p => `<p>${p}</p>`).join("")}
+  ${(w.images || []).map(figureHTML).join("")}
+</div>`;
+const aboutHTML = () => `<div class="panel-inner">${ABOUT_HTML}</div>`;
+
+// ---------- sequences ----------
+async function lock(fn) {
+  if (S.busy) return;
+  S.busy = true;
+  try { await fn(); } finally { S.busy = false; render(); }
+}
+
+async function openPanel() {
+  panel.scrollTop = 0;
+  await tween(550, t => S.line = t);
+  await tween(420, t => S.edge = t, ease.out);
+  await tween(750, t => S.panel = t);
+  await tween(450, t => S.content = t, ease.out);
+}
+async function closePanel(fast) {
+  const k = fast ? 0.6 : 1;
+  await tween(220 * k, t => S.content = 1 - t);
+  await tween(550 * k, t => S.panel = 1 - t);
+  await tween(300 * k, t => S.edge = 1 - t);
+  await tween(380 * k, t => S.line = 1 - t);
+  S.panelKind = null;
+  panel.innerHTML = "";
+}
+
+async function openNode(key) {
+  const other = key === "about" ? "work" : "about";
+  S.active = key;
+  await Promise.all([
+    tween(700, t => S.fill[key] = t),                       // fill black from the centre
+    tween(950, t => S.glide = t),                           // drift to its side position
+    (async () => {                                          // ripple wipes the other circle
+      await wait(600);
+      S.ripple = { key, P: 0, dir: 1 };
+      await tween(1600, t => S.ripple.P = t, ease.outSine);
+      S.ripple = null; S.gone[other] = 1;
+    })(),
+  ]);
+  if (key === "about") {
+    S.panelKind = "about"; panel.innerHTML = aboutHTML();
+    await openPanel();
+  } else {
+    await tween(1200, t => S.spin = t, ease.linear);        // spindles grow out
+  }
+}
+
+async function goHome() {
+  const key = S.active, other = key === "about" ? "work" : "about";
+  if (S.panelKind) await closePanel();
+  if (key === "work") {
+    await tween(800, t => S.spin = 1 - t, ease.linear);
+    S.sel = null; S.rot = 0;
+  }
+  S.ripple = { key, P: 0, dir: -1 };                        // ripple flows back inward
+  await Promise.all([
+    tween(1500, t => S.ripple.P = t, ease.inSine),
+    (async () => { await wait(800); await tween(750, t => S.fill[key] = 1 - t); })(),   // implode to white
+    (async () => { await wait(600); await tween(950, t => S.glide = 1 - t); })(),
+  ]);
+  S.ripple = null; S.gone[other] = 0; S.active = null;
+}
+
+function onNode(key) {
+  lock(async () => {
+    if (!S.active) await openNode(key);
+    else if (S.active === key) await goHome();
+  });
+}
+
+function onSpindle(i) {
+  lock(async () => {
+    if (S.active !== "work" || S.spin < 1) return;
+    if (S.panelKind) {
+      await closePanel(true);
+      if (S.sel === i) { S.sel = null; return; }           // clicking the open work again closes it
+    }
+    S.sel = i;
+    const delta = normAngle(layout().ballAngle - baseAngle(i) - S.rot);
+    const r0 = S.rot;
+    await tween(clamp(Math.abs(delta) / Math.PI * 1200, 380, 1200), t => S.rot = r0 + delta * t);
+    S.panelKind = "work"; panel.innerHTML = workHTML(WORKS[i]);
+    await openPanel();
+  });
+}
+
+addEventListener("keydown", e => {
+  if (e.key !== "Escape") return;
+  lock(async () => {
+    if (S.panelKind && S.active === "work") { await closePanel(); S.sel = null; }
+    else if (S.active) await goHome();
+  });
+});
+
+addEventListener("resize", () => {
+  if (S.sel != null && !S.busy) S.rot = layout().ballAngle - baseAngle(S.sel);
+  render();
+});
+
+document.fonts && document.fonts.ready.then(render);
+render();
+</script>
+</body>
+</html>
