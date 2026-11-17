@@ -27,8 +27,8 @@
     /* COLOURS */
     --ink:    #1d1c1a;   /* soft black: circles, lines, text */
     --paper:  #e8e5df;   /* warm off-white background */
-    --accent: #9b948a;   /* warm grey: hover/selected dot on the spindles */
-    --grain:  0.07;      /* paper texture strength (0 = none) */
+    /* --accent: #9b948a;   /* warm grey: hover/selected dot on the spindles */
+    --grain:  0.1;      /* paper texture strength (0 = none) */
 
     /* FONTS */
     --font:    "Courier New", Courier, monospace;           /* body text + spindle titles */
@@ -47,7 +47,7 @@
 
   /* circles on the dark start screen: light outline */
   .node .outline { fill:none; stroke:var(--paper); stroke-width:1.5; transition:stroke-width .25s, stroke .5s; }
-  .node:hover .outline, .node:focus-visible .outline { stroke-width:2.5; }
+  .node:hover .outline, .node:focus-visible .outline { stroke-width:5; }
   /* the active circle once the light has spread out of it */
   .node.lit .outline { stroke:var(--ink); }
   .paper-fill { fill:var(--paper); }
@@ -59,12 +59,12 @@
   .paper-text { fill:var(--paper); }
 
   .ring { fill:none; stroke:none; }   /* the ripple is now the edge of the light; set a stroke here to draw a line on it too */
-  .connector { stroke:var(--ink); stroke-width:2.5; stroke-linecap:round; stroke-dasharray:0.1 7; } /* dotted line to the panel */
-  .edge { stroke:var(--ink); stroke-width:3; }                                                      /* panel's dividing line */
+  .connector { stroke:var(--ink); stroke-width:1; stroke-linecap:round; stroke-dasharray:0.1 7; } /* dotted line to the panel */
+  .edge { stroke:var(--ink); stroke-width:6; }                                                      /* panel's dividing line */
 
   .spindle line { stroke:var(--ink); stroke-width:1.5; }
   .spindle .ball { fill:var(--paper); stroke:var(--ink); stroke-width:1.5; transition:fill .2s; }
-  .spindle:hover .ball, .spindle:focus-visible .ball, .spindle.selected .ball { fill:var(--accent); }
+  .spindle:hover .ball, .spindle:focus-visible .ball, .spindle.selected .ball { fill:var(--ink); }
   .spindle text { font-family:var(--font); text-anchor:middle; user-select:none; }
   .measure { font-family:var(--font); visibility:hidden; }
 
