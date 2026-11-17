@@ -4,26 +4,67 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cora Hermary</title>
+
+<!-- DISPLAY FONT (circle labels + headings). To try another Google font, swap the
+     family name in this link AND in --display below. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Major+Mono+Display&display=swap" rel="stylesheet">
+
 <style>
-  :root { --ink:#000; --paper:#fff; --font:"Courier New", Courier, monospace; }
+  /* To use your own font (e.g. ISADORA): put the file in a /fonts folder next to
+     index.html, uncomment this block, and set --display to "ISADORA". */
+  /*
+  @font-face {
+    font-family: "ISADORA";
+    src: url("fonts/ISADORA.woff2") format("woff2"),
+         url("fonts/ISADORA.otf") format("opentype");
+    font-display: swap;
+  }
+  */
+
+  :root {
+    /* COLOURS */
+    --ink:    #1d1c1a;   /* soft black: circles, lines, text */
+    --paper:  #e8e5df;   /* warm off-white background */
+    --accent: #9b948a;   /* warm grey: hover/selected dot on the spindles */
+    --grain:  0.07;      /* paper texture strength (0 = none) */
+
+    /* FONTS */
+    --font:    "Courier New", Courier, monospace;           /* body text + spindle titles */
+    --display: "Major Mono Display", "Courier New", monospace; /* ABOUT / WORK + headings */
+  }
   * { box-sizing:border-box; margin:0; padding:0; }
-  html, body { height:100%; background:var(--paper); color:var(--ink); overflow:hidden; font-family:var(--font); }
+  html, body { height:100%; background:var(--ink); color:var(--ink); overflow:hidden; font-family:var(--font); }
+  /* faint paper grain over everything */
+  body::after { content:""; position:fixed; inset:0; z-index:3; pointer-events:none; opacity:var(--grain);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
 
   /* The drawing layer: circles, ripples, spindles, lines */
   #stage { position:fixed; inset:0; width:100%; height:100%; z-index:2; pointer-events:none; display:block; }
   .hit { pointer-events:all; cursor:pointer; }
   .hit:focus { outline:none; }
 
-  .node .outline { fill:var(--paper); stroke:var(--ink); stroke-width:2; transition:stroke-width .25s; }
-  .node:hover .outline, .node:focus-visible .outline { stroke-width:3.5; }
-  .label { font-family:var(--font); text-anchor:middle; dominant-baseline:central; user-select:none; }
+  /* circles on the dark start screen: light outline */
+  .node .outline { fill:none; stroke:var(--paper); stroke-width:1.5; transition:stroke-width .25s, stroke .5s; }
+  .node:hover .outline, .node:focus-visible .outline { stroke-width:2.5; }
+  /* the active circle once the light has spread out of it */
+  .node.lit .outline { stroke:var(--ink); }
+  .paper-fill { fill:var(--paper); }
+  /* the light area that spreads with the ripple */
+  #flood { position:fixed; inset:0; z-index:0; background:var(--paper); clip-path:circle(0px at 50% 50%); }
+  .label { font-family:var(--display); text-anchor:middle; dominant-baseline:central; user-select:none; }
+  .ink-fill { fill:var(--ink); }
+  .ink-text { fill:var(--ink); }
+  .paper-text { fill:var(--paper); }
 
-  .ring { fill:none; stroke:var(--ink); stroke-width:1.5; }
-  .connector { stroke:var(--ink); stroke-width:1.5; }
+  .ring { fill:none; stroke:none; }   /* the ripple is now the edge of the light; set a stroke here to draw a line on it too */
+  .connector { stroke:var(--ink); stroke-width:2.5; stroke-linecap:round; stroke-dasharray:0.1 7; } /* dotted line to the panel */
+  .edge { stroke:var(--ink); stroke-width:3; }                                                      /* panel's dividing line */
 
   .spindle line { stroke:var(--ink); stroke-width:1.5; }
   .spindle .ball { fill:var(--paper); stroke:var(--ink); stroke-width:1.5; transition:fill .2s; }
-  .spindle:hover .ball, .spindle:focus-visible .ball, .spindle.selected .ball { fill:var(--ink); }
+  .spindle:hover .ball, .spindle:focus-visible .ball, .spindle.selected .ball { fill:var(--accent); }
   .spindle text { font-family:var(--font); text-anchor:middle; user-select:none; }
   .measure { font-family:var(--font); visibility:hidden; }
 
@@ -32,13 +73,14 @@
            overscroll-behavior:contain; scrollbar-width:none; }
   #panel::-webkit-scrollbar { display:none; }
   .panel-inner { padding:clamp(32px,6vw,84px) clamp(24px,5vw,72px); max-width:680px; }
-  .panel-inner h2 { font-weight:400; font-size:clamp(22px,2.4vw,32px); line-height:1.1; margin-bottom:.25em; }
+  .panel-inner h2 { font-family:var(--display); font-weight:400; font-size:clamp(22px,2.4vw,32px); line-height:1.1; margin-bottom:.25em; }
   .panel-inner h2.caps { letter-spacing:.15em; text-transform:uppercase; margin-bottom:1.2em; }
   .panel-inner .meta { font-size:14px; margin-bottom:2em; }
   .panel-inner p { font-size:clamp(14px,1.05vw,16px); line-height:1.65; margin-bottom:1em; }
   .panel-inner a { color:inherit; }
   .panel-inner figure { margin:2.2em 0; }
   .panel-inner img { width:100%; display:block; }
+  .panel-inner .media { margin-bottom:.15em; }
   .panel-inner figcaption { font-size:13px; margin-top:.6em; }
   .placeholder { aspect-ratio:4/3; border:1px solid var(--ink); display:flex; align-items:center; justify-content:center; font-size:13px; }
 </style>
@@ -46,13 +88,22 @@
 <body>
 
 <svg id="stage" aria-label="Portfolio navigation"></svg>
+<div id="flood"></div>
 <div id="panel" aria-live="polite"></div>
 
 <script>
 /* =====================================================================
    CONTENT — edit everything in this block.
-   For images: put the files next to index.html (e.g. in an /images
-   folder) and set src: "images/the-blue-1.jpg". Empty src = placeholder.
+   IMAGES: make a folder called "images" next to index.html, put your
+   photos in it, then list them on a work like this (as many as you like,
+   shown in this order; caption is optional):
+     images: [
+       { src: "images/elixir-1.jpg", caption: "installation view" },
+       { src: "images/elixir-2.jpg", caption: "detail" },
+     ]
+   File names are case-sensitive online: "Elixir.JPG" ≠ "elixir.jpg".
+   Empty src = placeholder box. In ABOUT_HTML, use:
+     <figure><img src="images/portrait.jpg" alt=""></figure>
    ===================================================================== */
 
 const ABOUT_HTML = `
@@ -66,16 +117,16 @@ const ABOUT_HTML = `
 const WORKS = [
   { title: "Elixir for a New World", year: "2026", dimensions: "",
    media: ["ink on paper", "essential oils (narcissus, sage, & Eastern hemlock)", "apricot kernel oil", "gold leaf", "found glass bottle", "cotton sheet over a trash can"],
-    images: [ { src: "images/elixir for a new world.png", caption: "" } ] },
-  { title: "I (or, Mask for Two)", year: "2026", dimensions: "",
+    images: [ { src: "", caption: "" } ] },
+  { title: "Mask", year: "2026", dimensions: "",
    media: ["dryer lint", "lipstick", "eyeliner", "toilet paper pulp", "velvet", "ribbon", "pins", "glass beads"],
-    images: [ { src: "images/I.jpeg", caption: "" } ] },
+    images: [ { src: "", caption: "" } ] },
   { title: "Binoculars", year: "2026", dimensions: "",
     media: ["pop can", "velvet", "glass beads"],
-    images: [ { src: "images/binoculars.JPG", caption: "" } ] },
-  { title: "abracadabra", year: "2026", dimensions: "",
+    images: [ { src: "", caption: "" } ] },
+  { title: "Abracadabra", year: "2026", dimensions: "",
     media: ["clay", "gesso", "cotton thread"],
-    images: [ { src: "images/abracadabra.JPG", caption: "" } ] },
+    images: [ { src: "", caption: "" } ] },
 ];
 
 /* Spindle settings (in pixels). Add or remove entries in WORKS above and
@@ -163,6 +214,9 @@ const S = {
   glide: 0,                      // active circle moving from home to side position
   fill: { about: 0, work: 0 },   // black fill radius (0..1)
   gone: { about: 0, work: 0 },   // dissolve amount of the other circle
+  pfill: { about: 1, work: 1 },  // light fill radius (0..1); circles start light
+  lit: null,                     // which circle has turned dark-on-light
+  flooded: false,                // whole screen is light
   ripple: null,                  // { key, P, dir }
   spin: 0,                       // spindle growth
   rot: 0,                        // spindle rotation (radians)
@@ -182,23 +236,31 @@ const mk = (tag, attrs = {}, parent) => {
 };
 const stage = document.getElementById("stage");
 const panel = document.getElementById("panel");
+const flood = document.getElementById("flood");
 const defs = mk("defs", {}, stage);
+
 const ringsG = mk("g", {}, stage);
-const rings = Array.from({ length: 4 }, () => mk("circle", { class: "ring" }, ringsG));
+const CIRCLE_GAP = 3;     // dark gap between a start circle's light disc and its outline (0 = no gap)
+const RIPPLE_RINGS = 1;   // number of ripple circles
+const rings = Array.from({ length: RIPPLE_RINGS }, () => mk("circle", { class: "ring" }, ringsG));
 const connector = mk("line", { class: "connector" }, stage);
-const edgeLine = mk("line", { class: "connector" }, stage);
+const edgeLine = mk("line", { class: "edge" }, stage);
 const spindleG = mk("g", {}, stage);
 
 const nodes = {};
 for (const key of ["about", "work"]) {
+  const mask = mk("mask", { id: "wipe-" + key, maskUnits: "userSpaceOnUse" }, defs);
+  const maskRect = mk("rect", { fill: "#fff" }, mask);
+  const maskHole = mk("circle", { fill: "#000" }, mask);   // where the ring has passed, the circle is erased
   const g = mk("g", { class: "node hit", tabindex: 0, role: "button" }, stage);
   const outline = mk("path", { class: "outline" }, g);
-  const fill = mk("circle", { fill: "#000" }, g);
-  const t1 = mk("text", { class: "label", fill: "#000" }, g);
-  const t2 = mk("text", { class: "label", fill: "#fff" }, g);
+  const pfill = mk("circle", { class: "paper-fill" }, g);   // the light disc inside the outline
+  const fill = mk("circle", { class: "ink-fill" }, g);      // then dark, as the light pours out
+  const t1 = mk("text", { class: "label ink-text" }, g);
+  const t2 = mk("text", { class: "label paper-text" }, g);
   t1.textContent = t2.textContent = key.toUpperCase();
   const seed = [Math.random() * 6.28, Math.random() * 6.28, Math.random() * 6.28];
-  nodes[key] = { g, outline, fill, t1, t2, seed };
+  nodes[key] = { g, outline, pfill, fill, t1, t2, seed, mask, maskRect, maskHole };
   g.addEventListener("click", () => onNode(key));
   g.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onNode(key); } });
 }
@@ -290,29 +352,45 @@ function render() {
       c.setAttribute("cx", ox); c.setAttribute("cy", oy); c.setAttribute("r", Math.max(0, r));
       c.style.opacity = vis ? (dir > 0 ? Math.pow(1 - q, .7) : Math.pow(q, .7)) : 0;
     });
+    // the other circle is erased wherever the ring has already passed
     const other = key === "about" ? "work" : "about";
     const d = Math.hypot(pos[other][0] - ox, pos[other][1] - oy);
-    S.gone[other] = clamp((ringR(0).r - (d - 1.2 * R)) / (2.4 * R));
+    const r0 = Math.max(0, ringR(0).r);
+    const n = nodes[other];
+    for (const el of [n.mask, n.maskRect]) { el.setAttribute("x", 0); el.setAttribute("y", 0); el.setAttribute("width", W); el.setAttribute("height", H); }
+    n.maskHole.setAttribute("cx", ox); n.maskHole.setAttribute("cy", oy); n.maskHole.setAttribute("r", r0);
+    n.g.setAttribute("mask", `url(#wipe-${other})`);
+    S.gone[other] = r0 >= d + R + 3 ? 1 : 0;
+    flood.style.clipPath = `circle(${r0}px at ${ox}px ${oy}px)`;
   } else {
+    flood.style.clipPath = S.flooded ? "none" : "circle(0px at 50% 50%)";
     rings.forEach(c => c.style.opacity = 0);
+    for (const k of ["about", "work"]) nodes[k].g.removeAttribute("mask");
   }
 
   // circles
   for (const key of ["about", "work"]) {
     const n = nodes[key], [x, y] = pos[key], gone = S.gone[key];
     n.g.style.display = gone >= 1 ? "none" : "";
-    n.g.style.opacity = 1 - smooth(.55, 1, gone);
-    n.outline.setAttribute("d", blob(x, y, R, gone, n.seed));
+    n.outline.setAttribute("d", blob(x, y, R, 0, n.seed));
     const fr = R * S.fill[key];
     n.fill.setAttribute("cx", x); n.fill.setAttribute("cy", y); n.fill.setAttribute("r", fr);
-    const fs = R * 0.22;
-    const textW = 1.8 * fs / R;                         // how far out the word reaches, as a fraction of R
-    const white = smooth(textW * 0.5, textW, S.fill[key]);
+    n.pfill.setAttribute("cx", x); n.pfill.setAttribute("cy", y); n.pfill.setAttribute("r", Math.max(0, (R - CIRCLE_GAP) * S.pfill[key]));
+    n.g.classList.toggle("lit", S.lit === key);
+    // size the word to fit inside the circle, whatever the font's proportions
+    let fs = R * 0.24;
+    n.t1.setAttribute("font-size", fs);
+    const measured = n.t1.getComputedTextLength() || fs * 3;
+    if (measured > R * 1.4) fs *= R * 1.4 / measured;
+    const textW = Math.min(measured, R * 1.4) / 2 / R;  // how far out the word reaches, as a fraction of R
+    // word is dark while the light fill covers it, light otherwise (on the dark screen or the black fill)
+    const darkWord = smooth(textW * 0.5, textW, S.pfill[key]) * (1 - smooth(textW * 0.5, textW, S.fill[key]));
+    const white = 1 - darkWord;
     for (const t of [n.t1, n.t2]) {
       t.setAttribute("x", x); t.setAttribute("y", y);
       t.setAttribute("font-size", fs);
     }
-    const fade = 1 - clamp(gone * 2.5);
+    const fade = gone >= 1 ? 0 : 1;
     n.t1.style.opacity = fade * (1 - white);
     n.t2.style.opacity = fade * white;
     n.g.setAttribute("aria-label", S.active === key ? "Back" : key);
@@ -390,8 +468,8 @@ function render() {
 const figureHTML = im => `<figure>${im.src ? `<img src="${esc(im.src)}" alt="${esc(im.caption || "")}">` : `<div class="placeholder">image</div>`}${im.caption ? `<figcaption>${im.caption}</figcaption>` : ""}</figure>`;
 const workHTML = w => `<div class="panel-inner">
   <h2>${w.title}</h2>
-  <p class="meta">${[w.year, w.dimensions].filter(Boolean).join(" · ")}</p>
-  ${(w.media || []).map(p => `<p>${p}</p>`).join("")}
+  <p class="meta" style="margin-bottom:1.2em">${[w.year, w.dimensions].filter(Boolean).join(" · ")}</p>
+  ${(w.media || []).map(p => `<p class="media">${p}</p>`).join("")}
   ${(w.images || []).map(figureHTML).join("")}
 </div>`;
 const aboutHTML = () => `<div class="panel-inner">${ABOUT_HTML}</div>`;
@@ -424,15 +502,16 @@ async function openNode(key) {
   const other = key === "about" ? "work" : "about";
   S.active = key;
   await Promise.all([
-    tween(700, t => S.fill[key] = t),                       // fill black from the centre
-    tween(950, t => S.glide = t),                           // drift to its side position
-    (async () => {                                          // ripple wipes the other circle
+    tween(700, t => S.fill[key] = t),                      // circle fills dark from the centre
+    tween(1300, t => S.glide = t),                         // drift to its side position
+    (async () => {                                         // then the ripple turns the background light
       await wait(600);
+      S.lit = key;
       S.ripple = { key, P: 0, dir: 1 };
       await tween(1600, t => S.ripple.P = t, ease.outSine);
-      S.ripple = null; S.gone[other] = 1;
     })(),
   ]);
+  S.ripple = null; S.flooded = true; S.gone[other] = 1;
   if (key === "about") {
     S.panelKind = "about"; panel.innerHTML = aboutHTML();
     await openPanel();
@@ -448,13 +527,15 @@ async function goHome() {
     await tween(800, t => S.spin = 1 - t, ease.linear);
     S.sel = null; S.rot = 0;
   }
-  S.ripple = { key, P: 0, dir: -1 };                        // ripple flows back inward
+  S.flooded = false;
+  S.ripple = { key, P: 0, dir: -1 };                        // the light flows back inward
   await Promise.all([
-    tween(1500, t => S.ripple.P = t, ease.inSine),
-    (async () => { await wait(800); await tween(750, t => S.fill[key] = 1 - t); })(),   // implode to white
-    (async () => { await wait(600); await tween(950, t => S.glide = 1 - t); })(),
+    tween(1500, t => S.ripple.P = t, ease.inSine),         // background goes dark again
+    (async () => { await wait(500); await tween(1000, t => S.glide = 1 - t); })(),
+    (async () => { await wait(800); await tween(750, t => S.fill[key] = 1 - t); })(),   // circle implodes back to light
   ]);
-  S.ripple = null; S.gone[other] = 0; S.active = null;
+  S.ripple = null; S.gone[other] = 0; S.lit = null;
+  S.active = null;
 }
 
 function onNode(key) {
