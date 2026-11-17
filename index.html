@@ -504,17 +504,17 @@ async function lock(fn) {
 async function openPanel() {
   panel.scrollTop = 0;
   await tween(550, t => S.line = t);
-  await tween(420, t => S.edge = t, ease.out);
+  if (S.edge < 1) await tween(420, t => S.edge = t, ease.out);
   await tween(750, t => S.panel = t);
   await tween(450, t => S.content = t, ease.out);
 }
-async function closePanel(fast) {
+async function closePanel(fast, keepEdge) { {
   const k = fast ? 0.6 : 1;
   await tween(220 * k, t => S.content = 1 - t);
   await tween(550 * k, t => S.panel = 1 - t);
-  await tween(300 * k, t => S.edge = 1 - t);
+  if (!keepEdge) await tween(300 * k, t => S.edge = 1 - t);
   await tween(380 * k, t => S.line = 1 - t);
-  S.panelKind = null;
+  if (!keepEdge) S.panelKind = null;
   panel.innerHTML = "";
 }
 
@@ -569,7 +569,7 @@ function onSpindle(i) {
   lock(async () => {
     if (S.active !== "work" || S.spin < 1) return;
     if (S.panelKind) {
-      await closePanel(true);
+      await closePanel(true, S.sel !== i);
       if (S.sel === i) { S.sel = null; return; }           // clicking the open work again closes it
     }
     S.sel = i;
